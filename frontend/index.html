@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Order Service — Real-Time Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle { color: #64748b; margin-bottom: 2rem; font-size: 0.9rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 1100px;
+    }
+
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.2rem;
+    }
+
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.3rem; }
+
+    input {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: #38bdf8; }
+
+    .items-section { margin-bottom: 1rem; }
+
+    .item-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 60px 80px 28px;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .item-row input { margin-bottom: 0; }
+
+    .btn {
+      padding: 0.55rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #38bdf8; color: #0f172a; width: 100%; margin-top: 0.5rem; padding: 0.7rem; }
+    .btn-danger  { background: #ef4444; color: #fff; padding: 0.3rem 0.5rem; font-size: 0.75rem; }
+    .btn-ghost   { background: #334155; color: #cbd5e1; }
+
+    .ws-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.4s;
+    }
+    .dot.connected { background: #22c55e; animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+
+    .events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+
+    .event-card {
+      background: #0f172a;
+      border: 1px solid #1e3a5f;
+      border-left: 4px solid #38bdf8;
+      border-radius: 8px;
+      padding: 0.8rem 1rem;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.4rem;
+    }
+
+    .event-type {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #38bdf8;
+    }
+
+    .event-time { font-size: 0.7rem; color: #475569; }
+
+    .event-order { font-size: 0.9rem; font-weight: 600; color: #f1f5f9; }
+
+    .event-detail { font-size: 0.8rem; color: #64748b; margin-top: 0.2rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .badge-PENDING    { background: #422006; color: #fb923c; }
+    .badge-CONFIRMED  { background: #052e16; color: #4ade80; }
+    .badge-PROCESSING { background: #1e1b4b; color: #818cf8; }
+    .badge-SHIPPED    { background: #0c4a6e; color: #38bdf8; }
+    .badge-DELIVERED  { background: #14532d; color: #86efac; }
+    .badge-CANCELLED  { background: #450a0a; color: #f87171; }
+
+    .empty { color: #475569; font-size: 0.85rem; text-align: center; padding: 2rem 0; }
+
+    .toast {
+      position: fixed;
+      bottom: 1.5rem; right: 1.5rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.8rem 1.2rem;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+      z-index: 999;
+    }
+
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-left: 4px solid #22c55e; }
+    .toast.error   { border-left: 4px solid #ef4444; }
+  </style>
+</head>
+<body>
+
+<h1>🛒 Order Service</h1>
+<p class="subtitle">Event-Driven Microservices Demo — Real-Time Order Notifications via WebSocket</p>
+
+<div class="grid">
+
+  <!-- ── Create Order ── -->
+  <div class="card">
+    <h2>📦 Create Order</h2>
+
+    <label>Customer Name</label>
+    <input id="customerName" type="text" placeholder="Jane Doe" value="Jane Doe"/>
+
+    <label>Customer Email</label>
+    <input id="customerEmail" type="email" placeholder="jane@example.com" value="jane@example.com"/>
+
+    <label>Idempotency Key (optional — re-use to test dedup)</label>
+    <input id="idempotencyKey" type="text" placeholder="Leave blank for auto-generated"/>
+
+    <div class="items-section">
+      <label>Order Items</label>
+      <div id="itemsContainer"></div>
+      <button class="btn btn-ghost" onclick="addItem()" style="width:100%;margin-top:4px;">+ Add Item</button>
+    </div>
+
+    <button class="btn btn-primary" onclick="submitOrder()">Place Order →</button>
+  </div>
+
+  <!-- ── Live Notifications ── -->
+  <div class="card">
+    <h2>🔔 Live Order Events</h2>
+
+    <div class="ws-bar">
+      <div class="dot" id="wsDot"></div>
+      <span id="wsStatus">Connecting to notification service…</span>
+      <button class="btn btn-ghost" style="margin-left:auto;padding:0.3rem 0.7rem;font-size:0.75rem" onclick="clearEvents()">Clear</button>
+    </div>
+
+    <div class="events-list" id="eventsList">
+      <div class="empty" id="emptyMsg">Waiting for order events…</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── Config ────────────────────────────────────────────────────────
+  const ORDER_API   = 'http://localhost:8080/orders';
+  const WS_ENDPOINT = 'http://localhost:8081/ws';
+  const WS_TOPIC    = '/topic/orders';
+
+  // ── Item management ───────────────────────────────────────────────
+  let itemCount = 0;
+
+  function addItem(pid = '', pname = '', qty = 1, price = '') {
+    itemCount++;
+    const id = `item-${itemCount}`;
+    const row = document.createElement('div');
+    row.className = 'item-row';
+    row.id = id;
+    row.innerHTML = `
+      <input placeholder="Product ID"   value="${pid}"   id="${id}-pid"/>
+      <input placeholder="Product Name" value="${pname}" id="${id}-pname"/>
+      <input placeholder="Qty" type="number" min="1" value="${qty}" id="${id}-qty"/>
+      <input placeholder="Price" type="number" step="0.01" value="${price}" id="${id}-price"/>
+      <button class="btn btn-danger" onclick="removeItem('${id}')">✕</button>
+    `;
+    document.getElementById('itemsContainer').appendChild(row);
+  }
+
+  function removeItem(id) {
+    document.getElementById(id)?.remove();
+  }
+
+  // Seed one default item
+  addItem('PROD-001', 'Laptop', 1, '999.99');
+
+  // ── Submit Order ───────────────────────────────────────────────────
+  async function submitOrder() {
+    const customerName  = document.getElementById('customerName').value.trim();
+    const customerEmail = document.getElementById('customerEmail').value.trim();
+    const idempotencyKey = document.getElementById('idempotencyKey').value.trim();
+
+    const rows = document.querySelectorAll('#itemsContainer .item-row');
+    const items = [];
+
+    for (const row of rows) {
+      const id    = row.id;
+      const pid   = document.getElementById(`${id}-pid`).value.trim();
+      const pname = document.getElementById(`${id}-pname`).value.trim();
+      const qty   = parseInt(document.getElementById(`${id}-qty`).value);
+      const price = parseFloat(document.getElementById(`${id}-price`).value);
+
+      if (!pid || !pname || isNaN(qty) || isNaN(price)) {
+        showToast('Please fill in all item fields.', 'error');
+        return;
+      }
+      items.push({ productId: pid, productName: pname, quantity: qty, unitPrice: price });
+    }
+
+    if (!customerName || !customerEmail || items.length === 0) {
+      showToast('Customer name, email, and at least one item are required.', 'error');
+      return;
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (idempotencyKey) headers['X-Idempotency-Key'] = idempotencyKey;
+
+    try {
+      const res = await fetch(ORDER_API, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ customerName, customerEmail, items })
+      });
+
+      const json = await res.json();
+
+      if (res.ok) {
+        showToast(`✅ Order ${json.data.orderNumber} created!`, 'success');
+      } else {
+        showToast(`❌ ${json.message || 'Failed to create order'}`, 'error');
+      }
+    } catch (e) {
+      showToast('❌ Could not reach Order Service. Is it running?', 'error');
+    }
+  }
+
+  // ── WebSocket / STOMP ──────────────────────────────────────────────
+  let stompClient = null;
+
+  function connect() {
+    const socket = new SockJS(WS_ENDPOINT);
+    stompClient  = Stomp.over(socket);
+    stompClient.debug = null; // suppress console noise
+
+    stompClient.connect({}, () => {
+      setWsStatus(true);
+
+      stompClient.subscribe(WS_TOPIC, (msg) => {
+        try {
+          const event = JSON.parse(msg.body);
+          renderEvent(event);
+        } catch (e) {
+          console.error('Failed to parse event', e);
+        }
+      });
+
+    }, (err) => {
+      setWsStatus(false);
+      console.warn('WebSocket disconnected, retrying in 3s…', err);
+      setTimeout(connect, 3000); // auto-reconnect
+    });
+  }
+
+  function setWsStatus(connected) {
+    document.getElementById('wsDot').className    = `dot${connected ? ' connected' : ''}`;
+    document.getElementById('wsStatus').textContent = connected
+      ? 'Connected — listening for order events'
+      : 'Disconnected — retrying…';
+  }
+
+  function renderEvent(event) {
+    const list = document.getElementById('eventsList');
+    document.getElementById('emptyMsg')?.remove();
+
+    const time = event.eventTime
+      ? new Date(event.eventTime).toLocaleTimeString()
+      : new Date().toLocaleTimeString();
+
+    const card = document.createElement('div');
+    card.className = 'event-card';
+    card.innerHTML = `
+      <div class="event-header">
+        <span class="event-type">${event.eventType || 'ORDER_EVENT'}</span>
+        <span class="event-time">${time}</span>
+      </div>
+      <div class="event-order">
+        ${event.orderNumber}
+        <span class="badge badge-${event.status}">${event.status}</span>
+      </div>
+      <div class="event-detail">${event.customerName} · ${event.customerEmail}</div>
+      <div class="event-detail">Total: $${parseFloat(event.totalAmount).toFixed(2)}</div>
+    `;
+
+    list.insertBefore(card, list.firstChild);
+  }
+
+  function clearEvents() {
+    const list = document.getElementById('eventsList');
+    list.innerHTML = '<div class="empty" id="emptyMsg">Waiting for order events…</div>';
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    t.textContent  = msg;
+    t.className    = `toast ${type} show`;
+    setTimeout(() => { t.className = 'toast'; }, 3500);
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────
+  connect();
+</script>
+</body>
+</html>
